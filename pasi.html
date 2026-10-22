@@ -1,0 +1,522 @@
+<!--
+  PASI → REDCap CSV/Excel + PDF, shared to WhatsApp
+  ---------------------------------------------------------------
+  Edit the CONFIG block in the script to change REDCap variable names.
+  Upload next to index.html on GitHub Pages; the link is .../pasi.html
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PASI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#EDF1F3; --surface:#FFFFFF; --ink:#18303D; --muted:#5B6F7A; --line:#C9D3D8;
+  --figure:#DCE3E7; --pso:#B5452E; --pso-soft:#F7E1DB; --ok:#0B7A8A; --focus:#E0A100;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#10191E; --surface:#18252C; --ink:#E6EEF1; --muted:#9AAEB8; --line:#2E3F48;
+    --figure:#2A3A42; --pso:#F07A5E; --pso-soft:#4A2A22; --ok:#4FC3D2; --focus:#FFC83D;
+    color-scheme: dark;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:17px;line-height:1.45;-webkit-tap-highlight-color:transparent}
+main{max-width:620px;margin:0 auto;padding:0 12px 48px}
+h1{font-size:1.25rem;margin:18px 0 4px}
+h2{font-size:1.1rem;margin:0}
+h3{font-size:.95rem;margin:14px 0 6px}
+h3 span{font-weight:400;color:var(--muted)}
+p.hint{margin:0 0 6px;color:var(--muted);font-size:.95rem}
+.nojs{background:var(--pso-soft);border:2px solid var(--pso);border-radius:12px;padding:12px;font-weight:700;margin:8px 0}
+
+.scores{position:sticky;top:0;z-index:5;display:grid;grid-template-columns:1.25fr repeat(4,1fr);gap:6px;
+  padding:10px 0;background:var(--bg)}
+.tile{border:2px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;padding:6px 6px;
+  font:inherit;text-align:left;cursor:pointer;min-width:0}
+.tile .lab{display:block;font-size:.8rem;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .val{display:block;font-size:1.25rem;font-weight:700;line-height:1.15}
+.tile[aria-pressed="true"]{border-color:var(--ink)}
+.tile.done .val{color:var(--ok)}
+.total{cursor:default;border-color:var(--pso);background:var(--pso-soft)}
+.total .val{font-size:1.7rem;color:var(--pso)}
+.total .lab{color:var(--ink)}
+.total small{font-weight:400;font-size:.75rem;color:var(--muted)}
+
+section{background:var(--surface);border-radius:16px;padding:12px;margin-top:12px}
+svg{width:100%;height:auto;display:block;touch-action:manipulation}
+.figwrap{max-width:330px;margin:0 auto}
+.reg{cursor:pointer;outline:none}
+.reg .ol{opacity:0}
+.reg.sel .ol,.reg:focus-visible .ol{opacity:1}
+.key{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 16px;margin-top:8px;font-size:.85rem;color:var(--muted)}
+.key span{display:inline-flex;align-items:center;gap:6px}
+.key i{display:inline-block;width:30px;height:14px;border-radius:4px;border:1px solid var(--line)}
+.key .grad{background:linear-gradient(90deg,hsl(125,45%,42%),hsl(62,70%,45%),hsl(0,70%,45%))}
+.seg{display:grid;gap:4px}
+.seg7{grid-template-columns:repeat(7,1fr)} .seg5{grid-template-columns:repeat(5,1fr)}
+.seg button{font:inherit;padding:6px 0 5px;border-radius:9px;border:1.5px solid var(--line);background:var(--bg);
+  color:var(--ink);cursor:pointer;display:flex;flex-direction:column;align-items:center;line-height:1.1;min-width:0}
+.seg b{font-size:1.15rem}
+.seg small{font-size:.68rem;color:var(--muted);white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.seg button[aria-pressed="true"] small{color:var(--surface)}
+.seg button:disabled{opacity:.4;cursor:not-allowed}
+.calc{margin:14px 0 10px;font-weight:700}
+.calc span{font-weight:400;color:var(--muted)}
+
+label.f{display:block;font-weight:700;margin-bottom:4px}
+input[type=datetime-local]{font:inherit;width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid var(--line);
+  background:var(--bg);color:var(--ink);margin-bottom:12px}
+.actions{display:grid;gap:10px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{font:inherit;font-weight:700;padding:14px;border-radius:12px;cursor:pointer;border:2px solid var(--ink);
+  background:var(--surface);color:var(--ink);width:100%}
+.btn.primary{background:var(--ink);color:var(--surface)}
+.btn.quiet{border-color:var(--line);color:var(--muted);font-weight:400}
+button:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+#msg{min-height:1.4em;margin:10px 0 0;font-weight:700}
+#msg.err{color:var(--pso)} #msg.ok{color:var(--ok)}
+</style>
+</head>
+<body>
+<main>
+  <h1>PASI</h1>
+  <p id="nojs" class="nojs">This is a file preview, which can't run the PASI tool. Open the tool from its web link instead, and it will load in your browser.</p>
+  <p class="hint">Tap a body region (or its tile), then score area and severity, counting front and back together. Each region fills from the bottom by area, coloured by erythema, with a dark edge for induration and white flecks for desquamation that fill the affected area from the bottom, a quarter per point. Each label shows the region score, then its area and sign scores.</p>
+
+  <div class="scores">
+    <div class="tile total"><span class="lab">PASI <small id="partial"></small></span><span class="val" id="total">0</span></div>
+  </div>
+
+  <section>
+    <div class="figwrap"><svg id="fig" viewBox="-24 0 248 266" aria-label="Body regions"></svg></div>
+    <div class="key"><span>Fill height = area</span><span>Dark edge = induration</span><span>White flecks, from the bottom in quarters = desquamation</span><span><i class="grad"></i>Erythema 0→4</span><span>Labels: region score, then A (area) E (erythema) I (induration) D (desquamation)</span></div>
+  </section>
+
+  <section id="editor">
+    <h2 id="edTitle"></h2>
+    <p class="hint" id="edNote" style="margin:2px 0 0"></p>
+    <h3>Area affected</h3>
+    <div class="seg seg7" id="segA"></div>
+    <div id="sev"></div>
+    <p class="calc" id="edCalc"></p>
+    <button class="btn" id="nextBtn"></button>
+  </section>
+
+  <section id="sendSec">
+    <label class="f" for="vdate">Visit date and time</label>
+    <input id="vdate" type="datetime-local">
+    <div class="actions">
+      <button class="btn primary" id="sendBtn">Share to WhatsApp</button>
+      <div class="pair"><button class="btn" id="pdfOnly">Share PDF only</button><button class="btn" id="dataOnly">Share Excel only</button></div>
+      <button class="btn" id="dlBtn">Download both files</button>
+      <button class="btn" id="csvText">Send CSV as a text message</button>
+      <button class="btn" id="copyBtn">Copy CSV</button>
+      <button class="btn quiet" id="clearBtn">Clear all</button>
+    </div>
+    <p id="msg" role="status"></p>
+  </section>
+</main>
+
+<script>
+document.getElementById("nojs").remove();
+/* ============================ CONFIG ============================ */
+const CONFIG = {
+  fields: {
+    recordId:  "record_id",        // filled automatically
+    visitDate: "visit_datetime",   // REDCap datetime field (Y-M-D H:M); "" to leave out
+    total:     "pasi_total"
+  },
+  eventName: "",                   // longitudinal projects, e.g. "baseline_arm_1"
+  regionPrefix: "pasi_"            // gives pasi_head_area, pasi_head_ery, pasi_head_ind, pasi_head_desq, pasi_head_score
+};
+/* ================================================================ */
+
+const REGIONS = [
+  {k:"head",  name:"Head and neck", short:"Head",  w:0.1, note:"Includes the neck"},
+  {k:"ul",    name:"Upper limbs",   short:"Arms",  w:0.2, note:"Includes the hands"},
+  {k:"trunk", name:"Trunk",         short:"Trunk", w:0.3, note:"Includes the axillae and groin"},
+  {k:"ll",    name:"Lower limbs",   short:"Legs",  w:0.4, note:"Includes the buttocks and feet"}
+];
+const AREA = ["0%","<10%","10–29%","30–49%","50–69%","70–89%","90–100%"];
+const AREA_S = ["0%","<10","10–29","30–49","50–69","70–89","90+"];
+const SEV = ["none","slight","moderate","severe","very severe"];
+const SEV_S = ["none","slight","mod","sev","v sev"];
+const SIGNS = [["e","Erythema","redness"],["i","Induration","thickness"],["d","Desquamation","scaling"]];
+
+const S = {}; REGIONS.forEach(r=>S[r.k]={a:null,e:null,i:null,d:null});
+let cur = "head";
+const R = k => REGIONS.find(r=>r.k===k);
+const r1 = x => Math.round(x*10)/10;
+function rscore(r){
+  const v=S[r.k];
+  if(v.a===null) return null;
+  if(v.a===0) return 0;
+  if(v.e===null||v.i===null||v.d===null) return null;
+  return r1((v.e+v.i+v.d)*v.a*r.w);
+}
+const raw = r => { const v=S[r.k]; return v.a ? ((v.e||0)+(v.i||0)+(v.d||0))*v.a : 0; };   // 0–72, for shading
+
+/* ---------- Figure (front and back), drawn for the screen and the PDF ---------- */
+const shapes = [];   // {r, t:"line"|"ell"|"poly", ...}
+function view(dx, back){
+  const X = x => x+dx, M = x => 200-x+dx;
+  const line = (r,pts,w) => { shapes.push({r,t:"line",w,pts:pts.map(([x,y])=>[X(x),y])});
+                             shapes.push({r,t:"line",w,pts:pts.map(([x,y])=>[M(x),y])}); };
+  const ell2 = (r,cx,cy,rx,ry) => { shapes.push({r,t:"ell",cx:X(cx),cy,rx,ry}); shapes.push({r,t:"ell",cx:M(cx),cy,rx,ry}); };
+  line("ul",[[66,74],[44,116],[34,156]],24);
+  ell2("ul",32,172,12,13);
+  line("ll",[[82,146],[80,196],[79,238]],32);
+  ell2("ll",78,252,18,9);
+  shapes.push({r:"trunk",t:"poly",pts:[[56,66],[100,61],[144,66],[140,150],[100,160],[60,150]].map(([x,y])=>[X(x),y])});
+  shapes.push({r:"head",t:"line",w:18,pts:[[X(100),52],[X(100),64]]});
+  shapes.push({r:"head",t:"ell",cx:X(100),cy:30,rx:23,ry:23});
+}
+view(0,false);
+
+// Group shapes by region and view, with a bounding box for the "fill from the bottom"
+const GROUPS=[];
+shapes.forEach(sh=>{
+  const v=(sh.pts?sh.pts[0][0]:sh.cx)>=200?"b":"f", key=sh.r+v;
+  let g=GROUPS.find(x=>x.key===key);
+  if(!g){ g={key,r:sh.r,shapes:[],x0:1e9,y0:1e9,x1:-1e9,y1:-1e9}; GROUPS.push(g); }
+  g.shapes.push(sh);
+  const grow=(x,y,p)=>{ g.x0=Math.min(g.x0,x-p); g.x1=Math.max(g.x1,x+p); g.y0=Math.min(g.y0,y-p); g.y1=Math.max(g.y1,y+p); };
+  if(sh.t==="line") sh.pts.forEach(([x,y])=>grow(x,y,sh.w/2));
+  if(sh.t==="poly") sh.pts.forEach(([x,y])=>grow(x,y,0));
+  if(sh.t==="ell"){ g.x0=Math.min(g.x0,sh.cx-sh.rx); g.x1=Math.max(g.x1,sh.cx+sh.rx); g.y0=Math.min(g.y0,sh.cy-sh.ry); g.y1=Math.max(g.y1,sh.cy+sh.ry); }
+});
+
+const AREA_FRAC=[0,.07,.2,.4,.6,.8,1];                     // share of the region filled, by area score
+function eryColor(e){                                       // green at 0 to red at 4
+  if(e===null) return "#9AA7AE";
+  return `hsl(${Math.round(125-125*e/4)},${e===0?45:70}%,${e===0?42:45}%)`;
+}
+function eryDark(e){                                        // the same hue, darkened, for the induration edge
+  if(e===null) return "#4E5A60";
+  return `hsl(${Math.round(125-125*e/4)},${e===0?45:70}%,22%)`;
+}
+const IND_T=[0,1.5,3.5,6,8.5];            // induration: width of the dark plaque edge, clearly wider at each step
+const DSQ_DENS=[0,.006,.012,.02,.03];     // fleck density; desquamation uses a fixed density and fills from the bottom
+// Shrink a shape inwards by t, to leave a border of width t inside the region
+function shrink(sh,t){
+  if(!t) return sh;
+  if(sh.t==="line") return {...sh, w:Math.max(2,sh.w-2*t)};
+  if(sh.t==="ell")  return {...sh, rx:Math.max(1,sh.rx-t), ry:Math.max(1,sh.ry-t)};
+  const xs=sh.pts.map(p=>p[0]), ys=sh.pts.map(p=>p[1]);
+  const cx=(Math.min(...xs)+Math.max(...xs))/2, cy=(Math.min(...ys)+Math.max(...ys))/2;
+  const sx=1-2*t/(Math.max(...xs)-Math.min(...xs)), sy=1-2*t/(Math.max(...ys)-Math.min(...ys));
+  return {...sh, pts:sh.pts.map(([x,y])=>[cx+(x-cx)*sx, cy+(y-cy)*sy])};
+}
+// Fixed, evenly scattered fleck positions per region, so they don't jump around between taps
+GROUPS.forEach(g=>{
+  let seed=[...g.key].reduce((a,c)=>a*31+c.charCodeAt(0),7)>>>0;
+  const rnd=()=>{ seed=(seed+0x6D2B79F5)>>>0; let t=seed; t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,t|61); return ((t^t>>>14)>>>0)/4294967296; };
+  const W=g.x1-g.x0, H=g.y1-g.y0, n=Math.ceil(W*H*DSQ_DENS[4]);
+  g.flecks=Array.from({length:n},()=>({x:g.x0+rnd()*W, y:g.y0+rnd()*H, r:1+rnd()*.9, k:rnd()}));
+});
+function shapeSVG(sh, style){
+  if(sh.t==="line") return `<polyline points="${sh.pts.join(" ")}" style="fill:none;stroke-linecap:round;stroke-linejoin:round;${style(sh)}"/>`;
+  if(sh.t==="ell")  return `<ellipse cx="${sh.cx}" cy="${sh.cy}" rx="${sh.rx}" ry="${sh.ry}" style="${style(sh)}"/>`;
+  return `<polygon points="${sh.pts.join(" ")}" style="stroke-linejoin:round;${style(sh)}"/>`;
+}
+function figureMarkup(C, id, showSel){
+  let o="<defs>";
+  GROUPS.forEach(g=>{
+    o+=`<mask id="${id}m${g.key}" maskUnits="userSpaceOnUse" x="-30" y="0" width="260" height="266">`;
+    g.shapes.forEach(sh=>o+=shapeSVG(sh,x=>x.t==="line"?`stroke:#fff;stroke-width:${x.w}`:"fill:#fff"));
+    o+="</mask>";
+    const t=IND_T[S[g.r].i||0];          // inner mask, inset by the induration edge
+    o+=`<mask id="${id}n${g.key}" maskUnits="userSpaceOnUse" x="-30" y="0" width="260" height="266">`;
+    g.shapes.forEach(sh=>{ const k=shrink(sh,t); o+=shapeSVG(k,x=>x.t==="line"?`stroke:#fff;stroke-width:${x.w}`:"fill:#fff"); });
+    o+="</mask>";
+  });
+  o+="</defs>";
+  GROUPS.forEach(g=>{
+    const reg=R(g.r), v=S[g.r];
+    o+=`<g class="reg${showSel&&g.r===cur?" sel":""}" data-r="${g.r}" data-k="${g.key}" tabindex="0" role="button" aria-label="${reg.name}">`;
+    if(showSel) g.shapes.forEach(sh=>o+=`<g class="ol">${shapeSVG(sh,x=>x.t==="line"?`stroke:${C.ink};stroke-width:${x.w+5}`:`fill:none;stroke:${C.ink};stroke-width:5`)}</g>`);
+    g.shapes.forEach(sh=>o+=shapeSVG(sh,x=>x.t==="line"?`stroke:${C.fig};stroke-width:${x.w}`:`fill:${C.fig}`));
+    if(v.a>0){
+      const h=AREA_FRAC[v.a]*(g.y1-g.y0), y=g.y1-h, rect=f=>`<rect x="${g.x0}" y="${y}" width="${g.x1-g.x0}" height="${h}" style="fill:${f}"/>`;
+      const t=IND_T[v.i||0];
+      // Induration: the filled area gets a dark edge, wider as induration rises
+      o+=`<g mask="url(#${id}m${g.key})">${rect(t?eryDark(v.e):eryColor(v.e))}</g>`;
+      o+=`<g mask="url(#${id}n${g.key})"><rect x="${g.x0}" y="${y+t}" width="${g.x1-g.x0}" height="${Math.max(0,h-t)}" style="fill:${eryColor(v.e)}"/>`;
+      // Desquamation: white flecks filling the affected area from the bottom, one quarter per point (1 = bottom 25%, 4 = all)
+      if(v.d>0){ const keep=DSQ_DENS[3]/DSQ_DENS[4], ymin=Math.max(y+t, g.y1-h*v.d/4);
+        g.flecks.forEach(f=>{ if(f.k<keep && f.y>=ymin) o+=`<circle cx="${f.x.toFixed(1)}" cy="${f.y.toFixed(1)}" r="${f.r.toFixed(2)}" style="fill:#fff;stroke:rgba(20,30,40,.35);stroke-width:.35"/>`; }); }
+      o+="</g>";
+    }
+    o+="</g>";
+  });
+  // Region scores next to each area (front view), once a score can be calculated
+  const POS={head:[156,28], ul:[6,100], trunk:[100,106], ll:[32,202]};
+  REGIONS.forEach(r=>{ const sc=rscore(r); if(sc===null) return; const [x,y]=POS[r.k];
+    const v=S[r.k], sub=v.a===0?"A0 clear":`A${v.a} E${v.e} I${v.i} D${v.d}`;
+    o+=`<g style="pointer-events:none"><rect x="${x-30}" y="${y-15}" width="60" height="30" rx="8" style="fill:#fff;stroke:#18303D;stroke-width:1.2"/>`+
+       `<text x="${x}" y="${y-1}" text-anchor="middle" style="fill:#18303D;font:700 12px ${C.font}">${sc.toFixed(1)}</text>`+
+       `<text x="${x}" y="${y+10}" text-anchor="middle" style="fill:#18303D;font:700 9px ${C.font}">${sub}</text></g>`; });
+  const t=(x,y,s,a)=>`<text x="${x}" y="${y}" ${a?'text-anchor="middle"':""} style="fill:${C.lab};font:700 13px ${C.font}">${s}</text>`;
+  o+=t(-20,16,"R")+t(208,16,"L");
+  return o;
+}
+const SCREEN={fig:"var(--figure)",ink:"var(--ink)",lab:"var(--muted)",font:"Atkinson Hyperlegible,system-ui,sans-serif"};
+const PRINT={fig:"#DCE3E7",ink:"#18303D",lab:"#5B6F7A",font:"Helvetica,Arial,sans-serif"};
+
+const svg=document.getElementById("fig");
+svg.addEventListener("click",e=>{ const g=e.target.closest(".reg"); if(g) select(g.dataset.r); });
+svg.addEventListener("keydown",e=>{ const g=e.target.closest(".reg");
+  if(g&&(e.key==="Enter"||e.key===" ")){ e.preventDefault(); select(g.dataset.r);} });
+function drawFigure(){
+  const focused=document.activeElement&&document.activeElement.dataset?document.activeElement.dataset.k:null;
+  svg.innerHTML=figureMarkup(SCREEN,"s",true);
+  if(focused){ const f=svg.querySelector(`[data-k="${focused}"]`); if(f) f.focus({preventScroll:true}); }
+  updatePNG();
+}
+// The PDF needs the figure as an image; it's prepared in the background after every change
+let figPNG=null, pngReady=false, pngTimer;
+function updatePNG(){
+  pngReady=false; clearTimeout(pngTimer);
+  pngTimer=setTimeout(()=>{
+    const str=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="-24 0 248 266" width="744" height="798">${figureMarkup(PRINT,"p",false)}</svg>`;
+    const img=new Image();
+    img.onload=()=>{ const c=document.createElement("canvas"); c.width=744; c.height=798;
+      const x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,744,798); x.drawImage(img,0,0,744,798);
+      figPNG=c.toDataURL("image/png"); pngReady=true; };
+    img.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(str);
+  },120);
+}
+
+/* ---------- Region tiles ---------- */
+const scoresBar=document.querySelector(".scores");
+REGIONS.forEach(r=>{
+  const b=document.createElement("button"); b.className="tile"; b.dataset.r=r.k;
+  b.innerHTML=`<span class="lab">${r.short}</span><span class="val">–</span>`;
+  b.addEventListener("click",()=>select(r.k));
+  scoresBar.appendChild(b);
+});
+
+/* ---------- Editor ---------- */
+function seg(container, n, labels, full, onPick){
+  const btns=[];
+  for(let i=0;i<n;i++){
+    const b=document.createElement("button");
+    b.innerHTML=`<b>${i}</b><small>${labels[i]}</small>`; b.setAttribute("aria-label",`${i}, ${full[i]}`);
+    b.addEventListener("click",()=>onPick(i));
+    container.appendChild(b); btns.push(b);
+  }
+  return btns;
+}
+const segA=seg(document.getElementById("segA"),7,AREA_S,AREA,v=>{ S[cur].a=v; render(); });
+const sevBox=document.getElementById("sev"), sevBtns={};
+SIGNS.forEach(([k,name,plain])=>{
+  const h=document.createElement("h3"); h.innerHTML=`${name} <span>(${plain})</span>`; sevBox.appendChild(h);
+  const wrap=document.createElement("div"); wrap.className="seg seg5"; sevBox.appendChild(wrap);
+  sevBtns[k]=seg(wrap,5,SEV_S,SEV,v=>{ S[cur][k]=v; render(); });
+});
+function select(k){ cur=k; render(); document.getElementById("editor").scrollIntoView({behavior:"smooth",block:"start"}); }
+document.getElementById("nextBtn").addEventListener("click",()=>{
+  const i=REGIONS.findIndex(r=>r.k===cur);
+  if(i<REGIONS.length-1) select(REGIONS[i+1].k);
+  else document.getElementById("sendSec").scrollIntoView({behavior:"smooth"});
+});
+
+function render(){
+  const r=R(cur), v=S[cur];
+  document.getElementById("edTitle").textContent=`${r.name} · weight ${r.w}`;
+  document.getElementById("edNote").textContent=r.note;
+  segA.forEach((b,i)=>b.setAttribute("aria-pressed",v.a===i));
+  SIGNS.forEach(([k])=>sevBtns[k].forEach((b,i)=>{ b.setAttribute("aria-pressed",v[k]===i); b.disabled=v.a===0; }));
+  const sc=rscore(r);
+  document.getElementById("edCalc").innerHTML = v.a===0
+    ? `Region score 0 <span>(no psoriasis, so severity isn't needed)</span>`
+    : sc===null ? `<span>Region score appears once area and all three signs are set.</span>`
+    : `Region score ${sc.toFixed(1)} <span>= (${v.e}+${v.i}+${v.d}) × ${v.a} × ${r.w}</span>`;
+  const i=REGIONS.findIndex(x=>x.k===cur);
+  document.getElementById("nextBtn").textContent = i<REGIONS.length-1 ? `Next: ${REGIONS[i+1].name}` : "Done: go to sharing";
+
+  let total=0, complete=true;
+  REGIONS.forEach(x=>{
+    const s=rscore(x); if(s===null) complete=false; else total+=s;
+    const t=document.querySelector(`.tile[data-r="${x.k}"]`);
+    t.querySelector(".val").textContent = s===null ? "–" : s.toFixed(1);
+    t.classList.toggle("done", s!==null);
+    t.setAttribute("aria-pressed", x.k===cur);
+  });
+  drawFigure();
+  document.getElementById("total").textContent=r1(total).toFixed(1);
+  document.getElementById("partial").textContent=complete?"":"so far";
+}
+
+/* ---------- Date-time stamp ---------- */
+const vdate=document.getElementById("vdate");
+const nowLocal=()=>{ const d=new Date(), p=n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+let stampEdited=false;
+vdate.value=nowLocal();
+vdate.addEventListener("input",()=>{ stampEdited=true; });
+setInterval(()=>{ if(!stampEdited) vdate.value=nowLocal(); },30000);
+
+/* ---------- Outputs ---------- */
+function stamp(){
+  const d=new Date(), p=n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+function collect(){
+  const missing=[];
+  REGIONS.forEach(r=>{ const v=S[r.k];
+    if(v.a===null) missing.push(`${r.name} (area)`);
+    else if(v.a>0 && (v.e===null||v.i===null||v.d===null)) missing.push(`${r.name} (severity)`); });
+  if(missing.length){ say(`Still to score: ${missing.join(", ")}.`,"err"); return null; }
+  if(!stampEdited) vdate.value=nowLocal();
+  if(!vdate.value){ say("Set the visit date and time before sending.","err"); return null; }
+  const id=`PASI-${stamp()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
+  const total=r1(REGIONS.reduce((a,r)=>a+rscore(r),0));
+  return {id, total, date:vdate.value.replace("T"," "), generated:new Date().toLocaleString("en-AU")};
+}
+function buildRow(d){
+  const F=CONFIG.fields, P=CONFIG.regionPrefix, cols=[], vals=[];
+  const add=(k,v)=>{ if(k){cols.push(k);vals.push(v);} };
+  add(F.recordId,d.id);
+  if(CONFIG.eventName) add("redcap_event_name",CONFIG.eventName);
+  add(F.visitDate,d.date);
+  add(F.total,d.total.toFixed(1));
+  REGIONS.forEach(r=>{ const v=S[r.k], blank=x=>v.a===0?"":x;   // severity left blank when area is 0
+    add(`${P}${r.k}_area`,v.a);
+    add(`${P}${r.k}_ery`,blank(v.e)); add(`${P}${r.k}_ind`,blank(v.i)); add(`${P}${r.k}_desq`,blank(v.d));
+    add(`${P}${r.k}_score`,rscore(r).toFixed(1));
+  });
+  return {cols, vals};
+}
+function buildCSV(d){
+  const {cols, vals}=buildRow(d);
+  const q=v=>{ v=String(v); return /[",\n]/.test(v)?`"${v.replace(/"/g,'""')}"`:v; };
+  return cols.map(q).join(",")+"\n"+vals.map(q).join(",")+"\n";
+}
+function buildXLSX(d){
+  const {cols, vals}=buildRow(d);
+  const ws=XLSX.utils.aoa_to_sheet([cols, vals]);
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "data");
+  return new Blob([XLSX.write(wb,{bookType:"xlsx",type:"array"})],
+    {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+function buildPDF(d){
+  const { jsPDF } = window.jspdf;
+  const doc=new jsPDF({unit:"mm",format:"a4"});
+  const C={ink:"#18303D",muted:"#5B6F7A",fig:"#DCE3E7",pso:"#B5452E",rule:"#C9D3D8"};
+  doc.setTextColor(C.ink); doc.setFont("helvetica","bold"); doc.setFontSize(16);
+  doc.text("Psoriasis Area and Severity Index (PASI)",12,16);
+  doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(C.muted);
+  doc.text(`Visit ${d.date}    Generated ${d.generated}    Record ${d.id}`,12,22);
+
+  doc.setDrawColor(C.pso); doc.setLineWidth(0.5); doc.roundedRect(12,27,50,20,2,2,"S");
+  doc.setFontSize(9); doc.setTextColor(C.muted); doc.text("PASI (0-72)",15,32.5);
+  doc.setFont("helvetica","bold"); doc.setFontSize(20); doc.setTextColor(C.pso); doc.text(d.total.toFixed(1),15,43.5);
+
+  // Figure
+  const s=0.55, ox=(210-248*s)/2, oy=52, Y=y=>oy+y*s;
+  doc.addImage(figPNG,"PNG",ox,oy,248*s,266*s);
+
+  // Table
+  let y=Y(266)+10;
+  const cx=[12,52,68,104,126,150,186];
+  const head=["Region","Weight","Area","Erythema","Induration","Desquam.","Score"];
+  doc.setFontSize(9); doc.setTextColor(C.ink);
+  head.forEach((h,i)=>doc.text(h,cx[i],y,i===6?{align:"right"}:undefined));
+  y+=2; doc.setDrawColor(C.rule); doc.setLineWidth(0.3); doc.line(12,y,198,y); y+=5;
+  doc.setFont("helvetica","normal");
+  REGIONS.forEach(r=>{ const v=S[r.k], sv=x=>v.a===0?"-":String(x);
+    const row=[r.name,String(r.w),`${v.a} (${AREA[v.a].replace("–","-")})`,sv(v.e),sv(v.i),sv(v.d)];
+    row.forEach((t,i)=>doc.text(t,cx[i],y));
+    doc.text(rscore(r).toFixed(1),198,y,{align:"right"});
+    y+=6;
+  });
+  doc.line(12,y-3,198,y-3); y+=2;
+  doc.setFont("helvetica","bold"); doc.text("Total PASI",12,y); doc.text(d.total.toFixed(1),198,y,{align:"right"});
+  y+=8;
+  doc.setFont("helvetica","normal"); doc.setFontSize(7.5); doc.setTextColor(C.muted);
+  doc.text("Region score = (erythema + induration + desquamation) x area x weight.",12,y); y+=4;
+  doc.text("Area: 0 none, 1 <10%, 2 10-29%, 3 30-49%, 4 50-69%, 5 70-89%, 6 90-100%.",12,y); y+=4;
+  doc.text("Severity: 0 none, 1 slight, 2 moderate, 3 severe, 4 very severe.",12,y); y+=4;
+  doc.text("Figure: fill height = area; colour = erythema (green 0 to red 4); dark edge = induration; white flecks filling from the bottom by quarters = desquamation; labels show region score, then A/E/I/D scores.",12,y);
+  return doc.output("blob");
+}
+
+/* ---------- Sharing (same behaviour as the joint count tool) ---------- */
+const UA=navigator.userAgent;
+const isAndroid=/Android/.test(UA);
+const isIOS=/iPhone|iPad/.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints>1);
+const isDesktop=!isAndroid && !isIOS;
+function dataFile(d, base){
+  if(isAndroid) return new File([buildCSV(d)],`${base}.csv`,{type:"application/pdf"});   // see joint count notes
+  if(isDesktop) return new File([buildCSV(d)],`${base}.csv`,{type:"text/csv"});
+  return new File([buildXLSX(d)],`${base}.xlsx`,{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+function makeFiles(){
+  const d=collect(); if(!d) return null;
+  if(!window.jspdf || (isIOS && !window.XLSX)){ say("The PDF or Excel tool didn't load. Check the internet connection and reload the page.","err"); return null; }
+  if(!pngReady){ say("The figure for the PDF is still being prepared. Tap again in a second.","err"); return null; }
+  const base=`pasi_${stamp()}`;
+  return { data:dataFile(d,base), csvText:buildCSV(d),
+    pdf:new File([buildPDF(d)],`${base}.pdf`,{type:"application/pdf"}), caption:d.date };
+}
+function device(){
+  const os=/iPhone|iPad/.test(UA)?"iPhone/iPad":/Android/.test(UA)?"Android":"computer";
+  const br=/CriOS|Chrome/.test(UA)?"Chrome":/FxiOS|Firefox/.test(UA)?"Firefox":/Safari/.test(UA)?"Safari":"other browser";
+  return `${os}, ${br}`;
+}
+function shareFiles(files, caption){
+  if(navigator.canShare && navigator.canShare({files, text:caption})){
+    navigator.share({files, text:caption})
+      .then(()=>say("Shared.","ok"))
+      .catch(e=>{ if(e.name!=="AbortError") say(`Sharing didn't work (${e.name}${e.message?": "+e.message:""}; ${device()}). Try the buttons below.`,"err"); });
+    say("Choose WhatsApp, then the chat to post in.","ok");
+  } else { download(files); say("This browser can't share files, so they were downloaded. Drag them into the WhatsApp chat.","ok"); }
+}
+function download(files){
+  files.forEach((x,i)=>setTimeout(()=>{ const a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([x],{type:"application/octet-stream"})); a.download=x.name;
+    document.body.appendChild(a); a.click(); a.remove(); }, i*400));
+}
+const $=id=>document.getElementById(id);
+$("sendBtn").addEventListener("click",()=>{ const f=makeFiles(); if(!f) return;
+  if(isDesktop){ download([f.data,f.pdf]); say("Both files are in your Downloads. Drag them into the chat in WhatsApp Desktop or web.whatsapp.com.","ok"); return; }
+  shareFiles([f.data,f.pdf],f.caption); });
+$("pdfOnly").addEventListener("click",()=>{ const f=makeFiles(); if(f) shareFiles([f.pdf],f.caption); });
+$("dataOnly").addEventListener("click",()=>{ const f=makeFiles(); if(f) shareFiles([f.data],f.caption); });
+$("dlBtn").addEventListener("click",()=>{ const f=makeFiles(); if(!f) return; download([f.data,f.pdf]);
+  say("Saved to Downloads. In WhatsApp, tap the paperclip, then Document, and pick both files.","ok"); });
+$("csvText").addEventListener("click",()=>{ const f=makeFiles(); if(!f) return;
+  if(!navigator.share){ say("This browser can't share. Use Copy CSV and paste it into the chat.","err"); return; }
+  navigator.share({text:`${f.caption}\n${f.csvText}`}).then(()=>say("Shared.","ok"))
+    .catch(e=>{ if(e.name!=="AbortError") say(`Sharing didn't work (${e.name}; ${device()}).`,"err"); }); });
+$("copyBtn").addEventListener("click",async()=>{ const d=collect(); if(!d) return;
+  try{ await navigator.clipboard.writeText(buildCSV(d)); say("CSV copied.","ok"); }
+  catch{ say("This browser blocked copying. Use the share button instead.","err"); } });
+$("clearBtn").addEventListener("click",()=>{
+  if(!confirm("Clear all PASI scores?")) return;
+  REGIONS.forEach(r=>S[r.k]={a:null,e:null,i:null,d:null});
+  cur="head"; stampEdited=false; vdate.value=nowLocal(); say("Cleared.","ok"); render(); });
+const dataName=isIOS?"Excel":"CSV";
+$("sendBtn").textContent=isDesktop?"Download CSV and PDF":`Share ${dataName} and PDF to WhatsApp`;
+$("dataOnly").textContent=`Share ${dataName} only`;
+if(isDesktop) ["pdfOnly","dataOnly","dlBtn","csvText"].forEach(id=>{ const b=$(id);
+  (b.parentElement.classList.contains("pair")?b.parentElement:b).hidden=true; });
+
+function say(t,c){ const m=$("msg"); m.textContent=t; m.className=c; }
+render();
+</script>
+</body>
+</html>
